@@ -10,110 +10,12 @@
 
 #include <boost/program_options.hpp>
 
-#include <jack/jack.h>
-#include <jack/midiport.h>
-
-#include <smf.h>
+#include "jack_midi_player.h"
+#include "smf_streamer.h"
 
 namespace po = boost::program_options;
 
-jack_client_t *jack_client{nullptr};
-
-std::atomic_bool running{false};
-
-std::exception_ptr pending_exception;
-
-jack_port_t *midi_port;
-
-bool repositioned;
-
-smf_t *smf;
-
-double jack_to_secs(jack_position_t *pos) {
-  return static_cast<double>(pos->frame) / pos->frame_rate;
-}
-
-void my_seek_to_seconds(double start_secs) {
-  for (;;) {
-    smf_event_t *next_event = smf_peek_next_event(smf);
-    if (next_event == nullptr || next_event->time_seconds >= start_secs)
-      break;
-    smf_skip_next_event(smf);
-  }    
-}
-
-int sync_callback(jack_transport_state_t state, jack_position_t *pos, void *) {
-  try {
-    if (state == JackTransportStarting) {
-      double secs = jack_to_secs(pos);
-      smf_rewind(smf);
-      my_seek_to_seconds(secs);
-      repositioned = true;
-    }
-  } catch (...) {
-    pending_exception = std::current_exception();
-    running.store(false);
-  }
-
-  return true;
-}
-
-int process_callback(jack_nframes_t nframes, void *) {
-  try {
-    static jack_transport_state_t last_state = JackTransportStopped;
-
-    void *buffer = jack_port_get_buffer(midi_port, nframes);
-    jack_midi_clear_buffer(buffer);
-
-    jack_position_t pos;
-    jack_transport_state_t state = jack_transport_query(jack_client, &pos);
-
-    if (repositioned ||
-        (state == JackTransportStopped && last_state != JackTransportStopped)) {
-      // Send all sounds OFF message to all channels.
-      for (unsigned char i = 0xb0; i <= 0xbf; ++i) {
-        jack_midi_data_t message[] = { i, 0x78, 0x00 };
-        if (jack_midi_event_write(buffer, 0, message, sizeof(message)) != 0)
-          throw std::runtime_error("jack_midi_event_write failed");
-      }
-    }
-
-    // TODO After repositioning, send controller values and program numbers.
-
-    if (state == JackTransportRolling) {
-      double start_secs = jack_to_secs(&pos);
-      double delta_secs = static_cast<double>(nframes) / pos.frame_rate;
-      double end_secs = start_secs + delta_secs;
-
-      my_seek_to_seconds(start_secs);
-      for (;;) {
-        smf_event_t *next_event = smf_peek_next_event(smf);
-        if (next_event == nullptr || next_event->time_seconds >= end_secs)
-          break;
-        double offset_secs = next_event->time_seconds - start_secs;
-        jack_nframes_t offset_frames =
-            static_cast<jack_nframes_t>(offset_secs * pos.frame_rate);
-        if (jack_midi_event_write(buffer, offset_frames, next_event->midi_buffer,
-                                  next_event->midi_buffer_length) != 0)
-          throw std::runtime_error("jack_midi_event_write failed");
-        smf_skip_next_event(smf);
-      }
-    }
-
-    repositioned = false;
-    last_state = state;
-
-    return 0;
-  } catch (...) {
-    pending_exception = std::current_exception();
-    running.store(false);
-    return -1;
-  }
-}
-
-void shutdown_callback(void *) {
-  running.store(false);
-}
+std::atomic_bool running(false);
 
 void signal_handler(int signal) {
   std::cerr << "Received signal " << signal << std::endl;
@@ -178,53 +80,29 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  smf = smf_load(vm["input-file"].as<std::string>().c_str());
-  if (smf == nullptr) {
-    std::cerr << "smf_load failed\n";
-    return -1;
-  }
+  std::string client_name(vm["client"].as<std::string>());
+  std::string port_name(vm["port"].as<std::string>());
+  std::string input_file(vm["input-file"].as<std::string>());
 
-  jack_client = jack_client_open(vm["client"].as<std::string>().c_str(),
-                                 JackNullOption, nullptr);
-  if (jack_client == nullptr) {
-    std::cerr << "jack_client_open failed\n";
-    return -1;
-  }
+  std::signal(SIGINT, &signal_handler);
 
   try {
-    if (jack_set_sync_callback(jack_client, &sync_callback, nullptr) != 0)
-      throw std::runtime_error("jack_set_sync_callback failed");
-    if (jack_set_process_callback(jack_client, &process_callback, nullptr) != 0)
-      throw std::runtime_error("jack_set_process_callback failed");
-    jack_on_shutdown(jack_client, &shutdown_callback, nullptr);
+    midiaud::JackMidiPlayer midi_player(client_name, port_name);
+    midiaud::SmfStreamer smf_streamer(input_file);
+    midi_player.set_smf_streamer(&smf_streamer);
 
-    midi_port = jack_port_register(jack_client,
-                                   vm["port"].as<std::string>().c_str(),
-                                   JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput,
-                                   0);
-    if (midi_port == nullptr)
-      throw std::runtime_error("jack_port_register failed");
-
-    std::signal(SIGINT, &signal_handler);
     running.store(true);
-    if (jack_activate(jack_client) != 0)
-      throw std::runtime_error("jack_activate failed");
+    midi_player.Activate();
 
-    while (running.load()) {
+    while (running.load() && midi_player.keep_running()) {
       // TODO Reload when file on disk changes.
       std::this_thread::sleep_for(std::chrono::milliseconds{10});
     }
 
-    if (pending_exception)
-      std::rethrow_exception(pending_exception);
+    midi_player.Deactivate();
+    return 0;
   } catch (std::exception &e) {
     std::cerr << e.what() << "\n";
-    jack_deactivate(jack_client);
-    jack_client_close(jack_client);
     return -1;
   }
-
-  jack_deactivate(jack_client);
-  jack_client_close(jack_client);
-  return 0;
 }

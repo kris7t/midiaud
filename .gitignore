@@ -1,0 +1,13 @@
+# Build directory
+build/
+
+# Waf
+.waf-*
+.waf3-*
+.lock-waf*
+
+# Editor temporary files
+*~
+\#*\#
+.\#*
+*.sw?
