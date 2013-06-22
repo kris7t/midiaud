@@ -63,7 +63,7 @@ def configure(conf):
     conf.check_cfg(package = 'smf',
                    args = ['--libs', '--cflags'],
                    uselib_store = 'SMF')
-    conf.check_boost(lib = 'program_options')
+    conf.check_boost(lib = ['program_options', 'system', 'filesystem'])
     if not conf.check_lockfree(atomic_types = ['bool', 'std::ptrdiff_t']):
         Logs.warn('Some atomics are not lock-free. Proceed at your own peril!')
 

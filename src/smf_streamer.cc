@@ -11,8 +11,8 @@ SmfStreamer::SmfStreamer()
 }
 
 SmfStreamer::SmfStreamer(const std::string &filename)
-    : smf_(smf_load(filename.c_str())), was_playing_(false),
-      repositioned_(false) {
+    : smf_(smf_load(filename.c_str())), initialized_(false),
+      was_playing_(false), repositioned_(false) {
   if (smf_ == nullptr)
     throw std::runtime_error("smf_load failed");
 }

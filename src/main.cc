@@ -1,4 +1,5 @@
 
+#include <ctime>
 #include <string>
 #include <iostream>
 #include <memory>
@@ -9,11 +10,13 @@
 #include <csignal>
 
 #include <boost/program_options.hpp>
+#include <boost/filesystem.hpp>
 
 #include "jack_midi_player.h"
 #include "smf_streamer.h"
 
 namespace po = boost::program_options;
+namespace fs = boost::filesystem;
 
 std::unique_ptr<midiaud::JackMidiPlayer> midi_player;
 
@@ -40,11 +43,12 @@ int main(int argc, char *argv[]) {
        "Jack client name")
       ("port,p", po::value<std::string>()->default_value("midi_out"),
        "Jack port name")
+      ("watch,w", "watch input file for changes")
       ;
 
   po::options_description hidden_options_desc;
   hidden_options_desc.add_options()
-      ("input-file", po::value<std::string>()->required(),
+      ("input-file", po::value<fs::path>()->required(),
        "input file")
       ;
 
@@ -84,17 +88,28 @@ int main(int argc, char *argv[]) {
 
   std::string client_name(vm["client"].as<std::string>());
   std::string port_name(vm["port"].as<std::string>());
-  std::string input_file(vm["input-file"].as<std::string>());
+  fs::path input_file(vm["input-file"].as<fs::path>());
+  bool watch = (vm.count("watch") > 0);
 
   try {
     midi_player.reset(new midiaud::JackMidiPlayer(client_name, port_name));
-    midi_player->EmplaceSmfStreamer(input_file);
+    midi_player->EmplaceSmfStreamer(input_file.string());
+
+    time_t last_load_time;
+    std::time(&last_load_time);
     std::signal(SIGINT, &signal_handler);
 
     midi_player->Activate();
     while (midi_player->keep_running()) {
-      // TODO Reload when file on disk changes.
       std::this_thread::sleep_for(std::chrono::milliseconds{10});
+      if (watch) {
+        time_t last_modified = fs::last_write_time(input_file);
+        if (std::difftime(last_load_time, last_modified) < 0) {
+          std::cerr << "Reloading " << input_file << std::endl;
+          midi_player->EmplaceSmfStreamer(input_file.string());
+          std::time(&last_load_time);
+        }
+      }
     }
     midi_player->Deactivate();
 
