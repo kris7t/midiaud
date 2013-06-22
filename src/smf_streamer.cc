@@ -5,6 +5,11 @@
 
 namespace midiaud {
 
+SmfStreamer::SmfStreamer()
+    : smf_(nullptr), initialized_(false),
+      was_playing_(false), repositioned_(false) {
+}
+
 SmfStreamer::SmfStreamer(const std::string &filename)
     : smf_(smf_load(filename.c_str())), was_playing_(false),
       repositioned_(false) {
@@ -12,11 +17,24 @@ SmfStreamer::SmfStreamer(const std::string &filename)
     throw std::runtime_error("smf_load failed");
 }
 
-SmfStreamer::SmfStreamer(SmfStreamer &&other)
+SmfStreamer::SmfStreamer(SmfStreamer &&other) noexcept
     : smf_(std::move(other.smf_)),
+      initialized_(std::move(other.initialized_)),
       was_playing_(std::move(other.was_playing_)),
       repositioned_(std::move(other.repositioned_)) {
   other.smf_ = nullptr;
+}
+
+SmfStreamer &SmfStreamer::operator=(SmfStreamer &&other) noexcept {
+  if (this != &other) {
+    if (smf_ != nullptr) smf_delete(smf_);
+    smf_ = std::move(other.smf_);
+    initialized_ = std::move(other.initialized_);
+    was_playing_ = std::move(other.was_playing_);
+    repositioned_ = std::move(other.repositioned_);
+    other.smf_ = nullptr;
+  }
+  return *this;
 }
 
 SmfStreamer::~SmfStreamer() {
@@ -26,6 +44,7 @@ SmfStreamer::~SmfStreamer() {
 void SmfStreamer::Reposition(double seconds) {
   Rewind();
   SeekForward(seconds);
+  initialized_ = true;
   repositioned_ = true;
 }
 
@@ -38,7 +57,8 @@ void SmfStreamer::StopIfNeeded(bool now_playing, JackMidiSink &sink) {
 
 void SmfStreamer::CopyToSink(double start_seconds, double end_seconds,
                              JackMidiSink &sink) {
-  for (;;) {
+    if (smf_ == nullptr) return;
+    for (;;) {
     smf_event_t *next_event = smf_peek_next_event(smf_);
     if (next_event == nullptr
         || next_event->time_seconds >= end_seconds) break;
@@ -55,10 +75,12 @@ void SmfStreamer::CopyToSink(double start_seconds, double end_seconds,
 }
 
 void SmfStreamer::Rewind() {
+  if (smf_ == nullptr) return;
   smf_rewind(smf_);
 }
 
 void SmfStreamer::SeekForward(double seconds) {
+  if (smf_ == nullptr) return;
   for (;;) {
     smf_event_t *next_event = smf_peek_next_event(smf_);
     if (next_event == nullptr

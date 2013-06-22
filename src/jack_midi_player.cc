@@ -8,7 +8,7 @@ namespace midiaud {
 JackMidiPlayer::JackMidiPlayer(std::string client_name,
                                std::string port_name)
     : client_name_(client_name), port_name_(port_name), activated_(false),
-      keep_running_(true), smf_streamer_(nullptr) {
+      keep_running_(true) {
   jack_client_ = jack_client_open(client_name_.c_str(),
                                   JackNullOption, nullptr);
   if (jack_client_ == nullptr)
@@ -70,33 +70,35 @@ void JackMidiPlayer::Deactivate() {
 
 int JackMidiPlayer::SyncCallback(jack_transport_state_t state,
                                  jack_position_t *pos) {
-  if (smf_streamer_ && state == JackTransportStarting) {
+  if (state == JackTransportStarting) {
+    SmfStreamer *smf_streamer = smf_streamer_container_.Fetch();
     double pos_seconds = static_cast<double>(pos->frame)
         / pos->frame_rate;
-    smf_streamer_->Reposition(pos_seconds);
+    smf_streamer->Reposition(pos_seconds);
   }
   return true;
 }
 
 int JackMidiPlayer::ProcessCallback(jack_nframes_t nframes) {
-  if (smf_streamer_) {
-    jack_position_t pos;
-    jack_transport_state_t state = jack_transport_query(
-        jack_client_, &pos);
+  jack_position_t pos;
+  jack_transport_state_t state = jack_transport_query(
+      jack_client_, &pos);
 
-    JackMidiSink midi_sink(midi_port_, nframes, pos.frame_rate);
+  JackMidiSink midi_sink(midi_port_, nframes, pos.frame_rate);
 
-    bool now_playing = (state == JackTransportRolling);
-    smf_streamer_->StopIfNeeded(now_playing, midi_sink);
-    if (now_playing) {
-      double start_seconds = static_cast<double>(pos.frame)
-          / pos.frame_rate;
-      double end_seconds = static_cast<double>(pos.frame + nframes)
-          / pos.frame_rate;
-      smf_streamer_->CopyToSink(start_seconds, end_seconds,
-                                midi_sink);
-    }
-  }
+  bool now_playing = (state == JackTransportRolling);
+  double start_seconds = static_cast<double>(pos.frame)
+      / pos.frame_rate;
+  double end_seconds = static_cast<double>(pos.frame + nframes)
+      / pos.frame_rate;
+
+  SmfStreamer *smf_streamer = smf_streamer_container_.Fetch();
+  if (!smf_streamer->initialized())
+    smf_streamer->Reposition(start_seconds);
+  smf_streamer->StopIfNeeded(now_playing, midi_sink);
+  if (now_playing) smf_streamer->CopyToSink(start_seconds,
+                                            end_seconds,
+                                            midi_sink);
   return 0;
 }
 
@@ -104,10 +106,10 @@ void JackMidiPlayer::ShutdownCallback() {
   throw std::runtime_error("Jack server shutdown");
 }
 
-void JackMidiPlayer::RequestDeactivate() noexcept {
+void JackMidiPlayer::RequestDeactivate(std::memory_order order) noexcept {
   // Changes to pending_exception_ will be released to the main
   // thread.
-  keep_running_.store(false, std::memory_order_release);
+  keep_running_.store(false, order);
 }
 
 int JackMidiPlayer::StaticSyncCallback(jack_transport_state_t state,

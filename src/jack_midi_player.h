@@ -9,6 +9,8 @@
 #include <jack/jack.h>
 
 #include "smf_streamer.h"
+#include "lockfree_resource.h"
+#include "lockfree_resource-inl.h"
 
 namespace midiaud {
 
@@ -26,6 +28,18 @@ class JackMidiPlayer {
    * the main thread (if any).
    */
   void Deactivate();
+  void RequestDeactivate(std::memory_order order =
+                         std::memory_order_release) noexcept;
+
+  /**
+   * Emplaces a new SmfStreamer into the resource container.
+   *
+   * The resource will be eventually used by the RT thread, and the
+   * old resource will eventually be destructed.
+   */
+  template <typename... Args> void EmplaceSmfStreamer(Args &&... args) {
+    smf_streamer_container_.Emplace(std::forward<Args>(args)...);
+  }
 
   const std::string &client_name() { return client_name_; }
   const std::string &port_name() { return port_name_; }
@@ -36,18 +50,11 @@ class JackMidiPlayer {
   bool keep_running() {
     return keep_running_.load(std::memory_order_acquire);
   }
-  SmfStreamer *smf_streamer() { return smf_streamer_; }
-  void set_smf_streamer(SmfStreamer *value) { smf_streamer_ = value; }
 
  protected:
   int SyncCallback(jack_transport_state_t , jack_position_t *pos);
   int ProcessCallback(jack_nframes_t nframes);
   void ShutdownCallback();
-
-  /**
-   * Only ever call this in the RT thread.
-   */
-  void RequestDeactivate() noexcept;
 
  private:
   static int StaticSyncCallback(jack_transport_state_t state,
@@ -110,7 +117,7 @@ class JackMidiPlayer {
    * When JackMidiPlayer is constructed, this flag is set. It will be
    * set again every time keep_running() is called.
    */
-  std::atomic_bool keep_running_;
+  std::atomic<bool> keep_running_;
   /**
    * Carries exceptions from the RT thread to be rethrown in the main
    * thread when Deactivate() is called.
@@ -118,7 +125,7 @@ class JackMidiPlayer {
   std::exception_ptr pending_exception_;
   jack_client_t *jack_client_; // For RT thread (initialized in main thread).
   jack_port_t *midi_port_; // For RT thread (initialized in main thread).
-  SmfStreamer *smf_streamer_;
+  LockfreeResource<SmfStreamer> smf_streamer_container_;
 };
 
 }

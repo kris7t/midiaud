@@ -1,11 +1,11 @@
 
 #include <string>
 #include <iostream>
+#include <memory>
 #include <exception>
 #include <stdexcept>
 #include <chrono>
 #include <thread>
-#include <atomic>
 #include <csignal>
 
 #include <boost/program_options.hpp>
@@ -15,13 +15,15 @@
 
 namespace po = boost::program_options;
 
-std::atomic_bool running(false);
+std::unique_ptr<midiaud::JackMidiPlayer> midi_player;
 
 void signal_handler(int signal) {
   std::cerr << "Received signal " << signal << std::endl;
   if (signal == SIGINT) {
-    std::cerr << "Exiting!" << std::endl;
-    running.store(false);
+    if (midi_player->activated()) {
+      std::cerr << "Deactivating Jack client!" << std::endl;
+      midi_player->RequestDeactivate(std::memory_order_relaxed);
+    }
   }
 }
 
@@ -84,22 +86,18 @@ int main(int argc, char *argv[]) {
   std::string port_name(vm["port"].as<std::string>());
   std::string input_file(vm["input-file"].as<std::string>());
 
-  std::signal(SIGINT, &signal_handler);
-
   try {
-    midiaud::JackMidiPlayer midi_player(client_name, port_name);
-    midiaud::SmfStreamer smf_streamer(input_file);
-    midi_player.set_smf_streamer(&smf_streamer);
+    midi_player.reset(new midiaud::JackMidiPlayer(client_name, port_name));
+    midi_player->EmplaceSmfStreamer(input_file);
+    std::signal(SIGINT, &signal_handler);
 
-    running.store(true);
-    midi_player.Activate();
-
-    while (running.load() && midi_player.keep_running()) {
+    midi_player->Activate();
+    while (midi_player->keep_running()) {
       // TODO Reload when file on disk changes.
       std::this_thread::sleep_for(std::chrono::milliseconds{10});
     }
+    midi_player->Deactivate();
 
-    midi_player.Deactivate();
     return 0;
   } catch (std::exception &e) {
     std::cerr << e.what() << "\n";
