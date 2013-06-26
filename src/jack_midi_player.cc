@@ -112,6 +112,16 @@ void JackMidiPlayer::RequestDeactivate(std::memory_order order) noexcept {
   keep_running_.store(false, order);
 }
 
+void JackMidiPlayer::ConnectPort(const std::string &destination) {
+  const char *own_port_name = jack_port_name(midi_port_);
+  if (own_port_name == nullptr)
+    throw std::runtime_error("jack_port_name failure");
+  int result = jack_connect(jack_client_, own_port_name,
+                            destination.c_str());
+  if (result != 0 && result != EEXIST)
+    throw std::runtime_error("jack_connect failure");
+}
+
 int JackMidiPlayer::StaticSyncCallback(jack_transport_state_t state,
                                        jack_position_t *pos,
                                        void *arg) noexcept {

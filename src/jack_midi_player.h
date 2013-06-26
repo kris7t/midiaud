@@ -41,6 +41,8 @@ class JackMidiPlayer {
     smf_streamer_container_.Emplace(std::forward<Args>(args)...);
   }
 
+  void ConnectPort(const std::string &destination);
+
   const std::string &client_name() { return client_name_; }
   const std::string &port_name() { return port_name_; }
   bool activated() { return activated_; }

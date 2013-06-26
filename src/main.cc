@@ -43,6 +43,8 @@ int main(int argc, char *argv[]) {
        "Jack client name")
       ("port,p", po::value<std::string>()->default_value("midi_out"),
        "Jack port name")
+      ("destination-port,d", po::value<std::string>(),
+       "Destination for MIDI output")
       ("watch,w", "watch input file for changes")
       ;
 
@@ -100,6 +102,13 @@ int main(int argc, char *argv[]) {
     std::signal(SIGINT, &signal_handler);
 
     midi_player->Activate();
+
+    // Only an activated client can have its ports connected.
+    if (vm.count("destination-port") > 0) {
+      std::string destination_port(vm["destination-port"].as<std::string>());
+      midi_player->ConnectPort(destination_port);
+    }
+
     while (midi_player->keep_running()) {
       std::this_thread::sleep_for(std::chrono::milliseconds{10});
       if (watch) {
@@ -111,6 +120,7 @@ int main(int argc, char *argv[]) {
         }
       }
     }
+
     midi_player->Deactivate();
 
     return 0;
