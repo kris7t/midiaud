@@ -98,6 +98,8 @@ int main(int argc, char *argv[]) {
     midi_player->EmplaceSmfStreamer(input_file.string());
 
     time_t last_load_time;
+    constexpr int max_reload_retries = 5;
+    int reload_retries = 0;
     std::time(&last_load_time);
     std::signal(SIGINT, &signal_handler);
 
@@ -114,9 +116,19 @@ int main(int argc, char *argv[]) {
       if (watch) {
         time_t last_modified = fs::last_write_time(input_file);
         if (std::difftime(last_load_time, last_modified) < 0) {
-          std::cerr << "Reloading " << input_file << std::endl;
-          midi_player->EmplaceSmfStreamer(input_file.string());
-          std::time(&last_load_time);
+          if (reload_retries == 0)
+            std::cerr << "Reloading " << input_file << std::endl;
+          try {
+            midi_player->EmplaceSmfStreamer(input_file.string());
+            std::time(&last_load_time);
+            reload_retries = 0;
+          } catch (...) {
+            // The reload of the MIDI file may have failed because the
+            // application that produced it have not finished writing
+            // yet (and there is no temporary file involved). Retry a
+            // couple times before giving up.
+            if (++reload_retries >= max_reload_retries) throw;
+          }
         }
       }
     }
