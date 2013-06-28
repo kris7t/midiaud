@@ -30,6 +30,8 @@ class JackMidiPlayer {
   void Deactivate();
   void RequestDeactivate(std::memory_order order =
                          std::memory_order_release) noexcept;
+  void SetTimebaseMaster(bool conditional);
+  void ReleaseTimebaseMaster();
 
   /**
    * Emplaces a new SmfStreamer into the resource container.
@@ -56,6 +58,10 @@ class JackMidiPlayer {
  protected:
   int SyncCallback(jack_transport_state_t , jack_position_t *pos);
   int ProcessCallback(jack_nframes_t nframes);
+  void TimebaseCallback(jack_transport_state_t state,
+                        jack_nframes_t nframes,
+                        jack_position_t *pos,
+                        int new_pos);
   void ShutdownCallback();
 
  private:
@@ -64,6 +70,11 @@ class JackMidiPlayer {
                                 void *arg) noexcept;
   static int StaticProcessCallback(jack_nframes_t nframes,
                                    void *arg) noexcept;
+  static void StaticTimebaseCallback(jack_transport_state_t state,
+                                     jack_nframes_t nframes,
+                                     jack_position_t *pos,
+                                     int new_pos,
+                                     void *arg) noexcept;
   static void StaticShutdownCallback(void *arg) noexcept;
 
   /**
@@ -112,6 +123,7 @@ class JackMidiPlayer {
   std::string client_name_; // For main thread.
   std::string port_name_; // For main thread.
   bool activated_; // For main thread!
+  bool timebase_master_; // For main thread!
   /**
    * Signals to the main loop that the Jack client in RT thread wants
    * to be deactivated.

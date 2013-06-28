@@ -2,10 +2,12 @@
 #define SMF_STREAMER_H_
 
 #include <string>
+#include <memory>
 
 #include <smf.h>
 
 #include "jack_midi_sink.h"
+#include "timebase/tempo_map.h"
 
 namespace midiaud {
 
@@ -25,6 +27,7 @@ class SmfStreamer {
                   JackMidiSink &sink);
 
   bool initialized() const { return initialized_; }
+  const timebase::TempoMap &tempo_map() const { return *tempo_map_; }
 
  private:
   void Rewind();
@@ -34,6 +37,7 @@ class SmfStreamer {
   bool initialized_;
   bool was_playing_;
   bool repositioned_;
+  std::unique_ptr<timebase::TempoMap> tempo_map_;
 };
 
 }

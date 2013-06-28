@@ -2,13 +2,14 @@
 #include "jack_midi_player.h"
 
 #include <stdexcept>
+#include <iostream>
 
 namespace midiaud {
 
 JackMidiPlayer::JackMidiPlayer(std::string client_name,
                                std::string port_name)
     : client_name_(client_name), port_name_(port_name), activated_(false),
-      keep_running_(true) {
+      timebase_master_(false), keep_running_(true) {
   jack_client_ = jack_client_open(client_name_.c_str(),
                                   JackNullOption, nullptr);
   if (jack_client_ == nullptr)
@@ -68,6 +69,24 @@ void JackMidiPlayer::Deactivate() {
   }
 }
 
+void JackMidiPlayer::SetTimebaseMaster(bool conditional) {
+  if (timebase_master_) return;
+  std::cerr << "Acquiring timebase master" << std::endl;
+  if (jack_set_timebase_callback(jack_client_, conditional,
+                                 &JackMidiPlayer::StaticTimebaseCallback,
+                                 this) != 0)
+    throw std::runtime_error("jack_set_timebase_callback failed");
+  timebase_master_ = true;
+}
+
+void JackMidiPlayer::ReleaseTimebaseMaster() {
+  if (!timebase_master_) return;
+  std::cerr << "Releasing timebase master" << std::endl;
+  if (jack_release_timebase(jack_client_) != 0)
+    throw std::runtime_error("jack_release_timebase failed");
+  timebase_master_ = false;
+}
+
 int JackMidiPlayer::SyncCallback(jack_transport_state_t state,
                                  jack_position_t *pos) {
   if (state == JackTransportStarting) {
@@ -100,6 +119,17 @@ int JackMidiPlayer::ProcessCallback(jack_nframes_t nframes) {
                                             end_seconds,
                                             midi_sink);
   return 0;
+}
+
+void JackMidiPlayer::TimebaseCallback(jack_transport_state_t state,
+                                      jack_nframes_t nframes,
+                                      jack_position_t *pos,
+                                      int new_pos) {
+  (void) state;
+  (void) nframes;
+  (void) new_pos;
+  SmfStreamer *smf_streamer = smf_streamer_container_.Fetch();
+  smf_streamer->tempo_map().FillBBT(pos);
 }
 
 void JackMidiPlayer::ShutdownCallback() {
@@ -137,6 +167,17 @@ int JackMidiPlayer::StaticProcessCallback(jack_nframes_t nframes,
   return midi_player->RunAndPropagateException([=]() {
       return midi_player->ProcessCallback(nframes);
     }, -1);
+}
+
+void JackMidiPlayer::StaticTimebaseCallback(jack_transport_state_t state,
+                                            jack_nframes_t nframes,
+                                            jack_position_t *pos,
+                                            int new_pos,
+                                            void *arg) noexcept {
+  JackMidiPlayer *midi_player = static_cast<JackMidiPlayer *>(arg);
+  midi_player->RunAndPropagateException([=]() {
+      midi_player->TimebaseCallback(state, nframes, pos, new_pos);
+    });
 }
 
 void JackMidiPlayer::StaticShutdownCallback(void *arg) noexcept {

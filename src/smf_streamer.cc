@@ -7,7 +7,8 @@ namespace midiaud {
 
 SmfStreamer::SmfStreamer()
     : smf_(nullptr), initialized_(false),
-      was_playing_(false), repositioned_(false) {
+      was_playing_(false), repositioned_(false),
+      tempo_map_(new timebase::TempoMap()) {
 }
 
 SmfStreamer::SmfStreamer(const std::string &filename)
@@ -15,13 +16,15 @@ SmfStreamer::SmfStreamer(const std::string &filename)
       was_playing_(false), repositioned_(false) {
   if (smf_ == nullptr)
     throw std::runtime_error("smf_load failed");
+  tempo_map_.reset(new timebase::TempoMap(smf_));
 }
 
 SmfStreamer::SmfStreamer(SmfStreamer &&other) noexcept
     : smf_(std::move(other.smf_)),
       initialized_(std::move(other.initialized_)),
       was_playing_(std::move(other.was_playing_)),
-      repositioned_(std::move(other.repositioned_)) {
+      repositioned_(std::move(other.repositioned_)),
+      tempo_map_(std::move(other.tempo_map_)) {
   other.smf_ = nullptr;
 }
 
@@ -32,6 +35,7 @@ SmfStreamer &SmfStreamer::operator=(SmfStreamer &&other) noexcept {
     initialized_ = std::move(other.initialized_);
     was_playing_ = std::move(other.was_playing_);
     repositioned_ = std::move(other.repositioned_);
+    tempo_map_ = std::move(other.tempo_map_);
     other.smf_ = nullptr;
   }
   return *this;

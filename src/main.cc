@@ -45,6 +45,7 @@ int main(int argc, char *argv[]) {
        "Jack port name")
       ("destination-port,d", po::value<std::string>(),
        "Destination for MIDI output")
+      ("master,m", "become Jack timebase master")
       ("watch,w", "watch input file for changes")
       ;
 
@@ -109,6 +110,10 @@ int main(int argc, char *argv[]) {
     if (vm.count("destination-port") > 0) {
       std::string destination_port(vm["destination-port"].as<std::string>());
       midi_player->ConnectPort(destination_port);
+    }
+
+    if (vm.count("master") > 0) {
+      midi_player->SetTimebaseMaster(false);
     }
 
     while (midi_player->keep_running()) {
