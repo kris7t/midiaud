@@ -5,6 +5,7 @@ def build(bld):
                           'jack_midi_sink.cc',
                           'jack_midi_player.cc',
                           'smf_streamer.cc',
+                          'timebase/position.cc',
                           'timebase/tempo_map.cc'],
                 includes = '.',
                 use = ['JACK', 'SMF', 'BOOST'])
