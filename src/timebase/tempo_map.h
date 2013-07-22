@@ -30,7 +30,9 @@ class TempoMap {
   jack_nframes_t BBTToFrame(jack_position_t *pos) const;
 
  private:
+  void Append(const Position &position);
   Position Get(double seconds) const;
+  Position Get(const BBT &bbt) const;
 
   std::vector<Position> positions_;
 };
