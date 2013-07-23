@@ -60,19 +60,21 @@ void SmfStreamer::StopIfNeeded(bool now_playing, JackMidiSink &sink) {
 
 void SmfStreamer::CopyToSink(double start_seconds, double end_seconds,
                              JackMidiSink &sink) {
-    if (smf_ == nullptr) return;
-    for (;;) {
+  if (smf_ == nullptr) return;
+  for (;;) {
     smf_event_t *next_event = smf_peek_next_event(smf_);
     if (next_event == nullptr
         || next_event->time_seconds >= end_seconds) break;
-    // Once repositioned by Reposition(), streaming is continous:
-    // start_seconds corresponds to the end_seconds of the previous
-    // cycle. If there is a discrepancy, send any events missed in the
-    // previous cycle (in our "past") anyways.
-    double offset_seconds = std::max(
-        0., next_event->time_seconds - start_seconds);
-    sink.WriteMidi(offset_seconds, next_event->midi_buffer,
-                   next_event->midi_buffer_length);
+    if (!smf_event_is_metadata(next_event)) {
+      // Once repositioned by Reposition(), streaming is continous:
+      // start_seconds corresponds to the end_seconds of the previous
+      // cycle. If there is a discrepancy, send any events missed in
+      // the previous cycle (in our "past") anyways.
+      double offset_seconds = std::max(
+          0., next_event->time_seconds - start_seconds);
+      sink.WriteMidi(offset_seconds, next_event->midi_buffer,
+                     next_event->midi_buffer_length);
+    }
     smf_skip_next_event(smf_);
   }
 }
