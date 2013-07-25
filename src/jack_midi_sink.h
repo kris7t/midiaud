@@ -12,7 +12,7 @@ class JackMidiSink {
                jack_nframes_t framerate);
 
   void WriteMidi(double offset_seconds,
-                 jack_midi_data_t *data, size_t size);
+                 const jack_midi_data_t *data, size_t size);
   void WriteProgramChange(double offset_seconds,
                           uint8_t channel, uint8_t program);
   void WriteNoteOn(double offset_seconds, uint8_t channel,

@@ -15,7 +15,7 @@ JackMidiSink::JackMidiSink(jack_port_t *port, jack_nframes_t nframes,
 }
 
 void JackMidiSink::WriteMidi(double offset_seconds,
-                             jack_midi_data_t *data,
+                             const jack_midi_data_t *data,
                              size_t size) {
   jack_nframes_t offset =
       static_cast<jack_nframes_t>(offset_seconds * framerate_);

@@ -24,8 +24,12 @@ Position::Position()
       ppqn_(Position::kDefaultTicksPerBeat) {
 }
 
-Position::Position(double seconds)
+Position::Position(ConstructFromSeconds, double seconds)
     : seconds_(seconds) {
+}
+
+Position::Position(ConstructFromTicks, double ticks)
+    : ticks_(ticks) {
 }
 
 Position::Position(const BBT &bbt)

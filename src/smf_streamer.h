@@ -2,9 +2,9 @@
 #define SMF_STREAMER_H_
 
 #include <string>
+#include <vector>
 
-#include <smf.h>
-
+#include "event.h"
 #include "jack_midi_sink.h"
 #include "timebase/tempo_map.h"
 
@@ -14,11 +14,6 @@ class SmfStreamer {
  public:
   SmfStreamer();
   SmfStreamer(const std::string &filename);
-  SmfStreamer(const SmfStreamer &) = delete;
-  SmfStreamer(SmfStreamer &&) noexcept;
-  ~SmfStreamer();
-  SmfStreamer &operator=(const SmfStreamer &) = delete;
-  SmfStreamer &operator=(SmfStreamer &&) noexcept;
 
   void Reposition(double seconds);
   void StopIfNeeded(bool now_playing, JackMidiSink &sink);
@@ -30,13 +25,16 @@ class SmfStreamer {
 
  private:
   void Rewind();
-  void SeekForward(double seconds);
+  void SeekForwardTo(double seconds);
 
-  smf_t *smf_;
+  bool next_event_valid() const { return next_event_ != events_.cend(); }
+
   bool initialized_;
   bool was_playing_;
   bool repositioned_;
+  std::vector<Event> events_;
   timebase::TempoMap tempo_map_;
+  std::vector<Event>::const_iterator next_event_;
 };
 
 }

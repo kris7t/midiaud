@@ -5,8 +5,7 @@
 
 #include <jack/jack.h>
 
-#include <smf.h>
-
+#include "event.h"
 #include "timebase/position.h"
 
 namespace midiaud {
@@ -24,15 +23,22 @@ class TempoMap {
    *
    * @param smf the smf object to copy tempo from.
    */
-  explicit TempoMap(smf_t *smf);
+  explicit TempoMap(double ppqn);
+
+  /**
+   * Must be called with a monotone sequence of events.
+   */
+  void AcknowledgeEvent(const Event &event);
+
+  Position GetSeconds(double seconds) const;
+  Position GetTicks(double ticks) const;
+  Position GetBBT(const BBT &bbt) const;
 
   void FillBBT(jack_position_t *pos) const;
   jack_nframes_t BBTToFrame(jack_position_t *pos) const;
 
  private:
-  void Append(const Position &position);
-  Position Get(double seconds) const;
-  Position Get(const BBT &bbt) const;
+  void AppendOrReplace(const Position &position);
 
   std::vector<Position> positions_;
 };

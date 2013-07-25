@@ -27,10 +27,17 @@ struct BBT {
 
 class Position {
  public:
+  struct ConstructFromSeconds {
+  };
+
+  struct ConstructFromTicks {
+  };
+
   static constexpr double kDefaultTicksPerBeat = 768;
 
   Position();
-  explicit Position(double seconds);
+  Position(ConstructFromSeconds, double seconds);
+  Position(ConstructFromTicks, double ticks);
   explicit Position(const BBT &bbt);
 
   void StartNewBar();
@@ -92,20 +99,16 @@ class Position {
 /**
  * Functor class for `std::binary_search`.
  */
-struct ComparePositionBySeconds {
+template <typename FieldType, FieldType (Position::*Member)() const>
+struct ComparePosition {
   bool operator()(const Position &lhs, const Position &rhs) {
-    return lhs.seconds() < rhs.seconds();
+    return (lhs.*Member)() < (rhs.*Member)();
   }
 };
 
-/**
- * Functor class for `std::binary_search`.
- */
-struct ComparePositionByBBT {
-  bool operator()(const Position &lhs, const Position &rhs) {
-    return lhs.bbt() < rhs.bbt();
-  }
-};
+typedef ComparePosition<double, &Position::seconds> ComparePositionBySeconds;
+typedef ComparePosition<double, &Position::ticks> ComparePositionByTicks;
+typedef ComparePosition<const BBT &, &Position::bbt> ComparePositionByBBT;
 
 } // timebase
 } // midiaud
